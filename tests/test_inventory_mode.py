@@ -4,7 +4,7 @@ import unittest
 from unittest.mock import Mock, patch
 
 from sdl2 import (SDL_KEYDOWN, SDL_KEYUP, SDL_QUIT, SDLK_0, SDLK_1,
-                  SDLK_2, SDLK_i, SDLK_p, SDLK_RIGHT, SDLK_SPACE)
+                  SDLK_2, SDLK_ESCAPE, SDLK_i, SDLK_p, SDLK_RIGHT, SDLK_SPACE)
 
 import game_framework
 import game_world
@@ -47,7 +47,8 @@ class InventoryModeTests(unittest.TestCase):
 
     def open_inventory(self):
         self.send(play_mode, key(SDLK_i))
-        self.assertEqual(game_framework.stack, [play_mode, inventory_mode])
+        self.assertEqual(game_framework.stack, [play_mode])
+        self.assertIsNotNone(inventory_mode.image)
 
     def test_i_toggles_inventory_and_preserves_game_objects(self):
         player = play_mode.boy
@@ -55,7 +56,7 @@ class InventoryModeTests(unittest.TestCase):
         self.open_inventory()
         inventory_mode.load_image.assert_called_once_with(
             str(Path(inventory_mode.__file__).with_name('item_select.png')))
-        self.send(inventory_mode, key(SDLK_i))
+        self.send(play_mode, key(SDLK_i))
         self.assertEqual(game_framework.stack, [play_mode])
         self.assertIs(play_mode.boy, player)
         self.assertEqual(game_world.world, objects)
@@ -64,9 +65,9 @@ class InventoryModeTests(unittest.TestCase):
     def test_number_keys_select_and_persist_after_reopening(self):
         self.open_inventory()
         for keycode, selection in ((SDLK_0, 0), (SDLK_1, 1), (SDLK_2, 2)):
-            self.send(inventory_mode, key(keycode))
+            self.send(play_mode, key(keycode))
             self.assertEqual(play_mode.boy.ball_type, selection)
-        self.send(inventory_mode, key(SDLK_i))
+        self.send(play_mode, key(SDLK_i))
         self.open_inventory()
         self.assertEqual(play_mode.boy.ball_type, 2)
 
@@ -74,26 +75,28 @@ class InventoryModeTests(unittest.TestCase):
         self.send(play_mode, key(SDLK_i, repeat=1))
         self.assertEqual(game_framework.stack, [play_mode])
         self.open_inventory()
-        self.send(inventory_mode, key(SDLK_i, repeat=1))
-        self.assertEqual(game_framework.stack, [play_mode, inventory_mode])
+        self.send(play_mode, key(SDLK_i, repeat=1))
+        self.assertEqual(game_framework.stack, [play_mode])
+        self.assertIsNotNone(inventory_mode.image)
 
-    def test_world_and_idle_timer_pause_while_inventory_is_open(self):
+    def test_world_and_idle_timer_continue_while_inventory_is_open(self):
         self.open_inventory()
+        moving_object = Mock()
+        game_world.add_object(moving_object)
         self.now = 110.0
-        with patch.object(game_world, 'update') as update:
-            inventory_mode.update()
-        update.assert_not_called()
-        self.send(inventory_mode, key(SDLK_i))
-        play_mode.boy.update()
-        self.assertEqual(play_mode.boy.state, 'IDLE')
-        self.assertEqual(play_mode.boy.idle_started_at, 110.0)
+        play_mode.update()
+        moving_object.update.assert_called_once_with()
+        self.assertEqual(play_mode.boy.state, 'SLEEP')
+        self.assertIsNone(play_mode.paused_at)
+        self.send(play_mode, key(SDLK_i))
+        self.assertEqual(play_mode.boy.idle_started_at, 10.0)
 
-    def test_key_release_is_applied_when_closing_inventory(self):
+    def test_key_release_is_applied_immediately_in_inventory(self):
         self.send(play_mode, key(SDLK_RIGHT))
         self.open_inventory()
-        self.send(inventory_mode, key(SDLK_RIGHT, SDL_KEYUP))
-        self.assertEqual(play_mode.boy.state, 'RUN')
-        self.send(inventory_mode, key(SDLK_i))
+        self.send(play_mode, key(SDLK_RIGHT, SDL_KEYUP))
+        self.assertEqual(play_mode.boy.state, 'IDLE')
+        self.send(play_mode, key(SDLK_i))
         self.assertEqual(play_mode.boy.state, 'IDLE')
         self.assertEqual(play_mode.boy.pressed_keys, set())
 
@@ -104,35 +107,35 @@ class InventoryModeTests(unittest.TestCase):
                 release = key(SDLK_RIGHT, SDL_KEYUP)
                 if opening_batch:
                     self.send(play_mode, key(SDLK_i), release)
-                    self.send(inventory_mode, key(SDLK_i))
+                    self.send(play_mode, key(SDLK_i))
                 else:
                     self.open_inventory()
-                    self.send(inventory_mode, key(SDLK_i), release)
+                    self.send(play_mode, key(SDLK_i), release)
                 self.assertEqual(play_mode.boy.state, 'IDLE')
                 self.assertEqual(play_mode.paused_key_releases, [])
 
-    def test_inventory_does_not_forward_space_to_player(self):
+    def test_inventory_forwards_space_to_player(self):
         self.open_inventory()
         with patch.object(play_mode.boy, 'fire_ball') as fire:
-            self.send(inventory_mode, key(SDLK_SPACE))
-        fire.assert_not_called()
+            self.send(play_mode, key(SDLK_SPACE))
+        fire.assert_called_once_with()
 
     def test_window_close_quits_from_inventory(self):
         self.open_inventory()
-        self.send(inventory_mode, SimpleNamespace(type=SDL_QUIT))
+        self.send(play_mode, SimpleNamespace(type=SDL_QUIT))
         self.assertFalse(game_framework.running)
 
     def test_overlay_draws_at_canvas_center_after_world(self):
         self.open_inventory()
         calls = Mock()
         calls.attach_mock(self.overlay.draw, 'overlay')
-        with patch.object(inventory_mode, 'clear_canvas'), \
-                patch.object(inventory_mode, 'update_canvas'), \
+        with patch.object(play_mode, 'clear_canvas'), \
+                patch.object(play_mode, 'update_canvas'), \
                 patch.object(inventory_mode, 'get_canvas_width', return_value=1024), \
                 patch.object(inventory_mode, 'get_canvas_height', return_value=768), \
                 patch.object(game_world, 'render') as render:
             calls.attach_mock(render, 'world')
-            inventory_mode.render()
+            play_mode.render()
         self.overlay.draw.assert_called_once_with(512, 384)
         self.assertEqual([call[0] for call in calls.mock_calls], ['world', 'overlay'])
 
@@ -141,6 +144,45 @@ class InventoryModeTests(unittest.TestCase):
         self.assertEqual(game_framework.stack, [play_mode, pause_mode])
         self.send(pause_mode, key(SDLK_p))
         self.assertEqual(game_framework.stack, [play_mode])
+
+    def test_player_and_ball_keep_moving_with_inventory_open(self):
+        from ball import Ball
+        self.open_inventory()
+        self.send(play_mode, key(SDLK_RIGHT))
+        with patch.dict(Ball.images, {}, clear=True), \
+                patch('ball.load_image', return_value=Mock()), \
+                patch('ball.get_canvas_width', return_value=800), \
+                patch('boy.get_canvas_width', return_value=800):
+            self.send(play_mode, key(SDLK_2), key(SDLK_SPACE))
+            ball = game_world.world[1][-1]
+            player_x, ball_x = play_mode.boy.x, ball.x
+            play_mode.update()
+        self.assertGreater(play_mode.boy.x, player_x)
+        self.assertGreater(ball.x, ball_x)
+        self.assertEqual(play_mode.boy.ball_type, 2)
+
+    def test_p_pauses_game_with_inventory_open_and_restores_overlay(self):
+        self.open_inventory()
+        self.send(play_mode, key(SDLK_p))
+        self.assertEqual(game_framework.stack, [play_mode, pause_mode])
+        self.now = 110.0
+        with patch.object(game_world, 'update') as update:
+            pause_mode.update()
+        update.assert_not_called()
+        self.send(pause_mode, key(SDLK_p))
+        self.assertEqual(game_framework.stack, [play_mode])
+        self.assertIsNotNone(inventory_mode.image)
+        self.assertEqual(play_mode.boy.idle_started_at, 110.0)
+
+    def test_escape_closes_inventory_and_returns_to_title(self):
+        import title_mode
+        self.open_inventory()
+        with patch.object(title_mode, 'init'):
+            self.send(play_mode, key(SDLK_ESCAPE))
+        self.assertEqual(game_framework.stack, [title_mode])
+        self.assertIsNone(inventory_mode.image)
+        self.assertIsNone(play_mode.boy)
+        self.assertTrue(all(not layer for layer in game_world.world))
 
 
 if __name__ == '__main__':
