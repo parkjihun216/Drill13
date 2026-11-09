@@ -18,6 +18,7 @@ class Boy:
         self.dir = 0
         self.face_dir = 1
         self.pressed_keys = set()
+        self.ball_type = 1
 
         self.machine = Machine(
             model=self,
@@ -45,6 +46,9 @@ class Boy:
 
     def on_enter_RUN(self):
         self.frame = 0
+
+    def select_ball(self, ball_type):
+        self.ball_type = ball_type
 
     def fire_ball(self):
         ball = Ball(self.x, self.y, self.face_dir * 10)
