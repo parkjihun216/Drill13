@@ -6,6 +6,7 @@ import game_world
 import play_mode
 
 image = None
+ball_choices = {SDLK_0: 0, SDLK_1: 1, SDLK_2: 2}
 
 
 def init():
@@ -23,6 +24,8 @@ def handle_events():
         if event.type == SDL_QUIT:
             game_framework.quit()
             return
+        elif event.type == SDL_KEYDOWN and event.key in ball_choices:
+            play_mode.boy.select_ball(ball_choices[event.key])
 
 
 def update():
