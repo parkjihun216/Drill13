@@ -20,9 +20,18 @@ def finish():
 
 
 def handle_events():
-    for event in get_events():
+    events = get_events()
+    # Replay releases on resume to avoid leaving movement keys held down.
+    play_mode.paused_key_releases.extend(
+        event for event in events if event.type == SDL_KEYUP
+    )
+    for event in events:
         if event.type == SDL_QUIT:
             game_framework.quit()
+            return
+        elif (event.type == SDL_KEYDOWN and event.key == SDLK_i
+              and not getattr(event, 'repeat', 0)):
+            game_framework.pop_mode()
             return
         elif event.type == SDL_KEYDOWN and event.key in ball_choices:
             play_mode.boy.select_ball(ball_choices[event.key])
