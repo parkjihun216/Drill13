@@ -51,8 +51,10 @@ class Boy:
         self.ball_type = ball_type
 
     def fire_ball(self):
-        ball = Ball(self.x, self.y, self.face_dir * 10)
-        game_world.add_oject(ball)
+        if self.ball_type == 0:
+            return
+        ball = Ball(self.x, self.y, self.face_dir * 10, self.ball_type)
+        game_world.add_object(ball)
 
     def handle_event(self, event):
         if (event.type == SDL_KEYDOWN and
