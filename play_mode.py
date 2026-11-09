@@ -16,10 +16,14 @@ def handle_events():
             import title_mode
             game_framework.change_mode(title_mode)
             return
-        elif event.type == SDL_KEYDOWN and event.key == SDLK_p:
+        elif event.type == SDL_KEYDOWN and event.key in (SDLK_p, SDLK_i):
             if not getattr(event, 'repeat', 0):
-                import pause_mode
-                game_framework.push_mode(pause_mode)
+                if event.key == SDLK_i:
+                    import inventory_mode
+                    game_framework.push_mode(inventory_mode)
+                else:
+                    import pause_mode
+                    game_framework.push_mode(pause_mode)
                 paused_key_releases.extend(
                     e for e in event_list if e.type == SDL_KEYUP
                 )
